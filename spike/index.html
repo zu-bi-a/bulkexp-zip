@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OPFS spike harness</title>
+<style>
+  :root { --bg: #fafaf9; --fg: #1c1917; --muted: #78716c; --line: #e7e5e4; --accent: #2563eb; --bad: #dc2626; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #0c0a09; --fg: #f5f5f4; --muted: #a8a29e; --line: #292524; --accent: #60a5fa; --bad: #f87171; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, sans-serif; }
+  main { max-width: 720px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  p { color: var(--muted); margin: 0 0 16px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 14px; }
+  label { display: flex; flex-direction: column; font-size: 13px; color: var(--muted); gap: 4px; }
+  input { font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+  button { font: inherit; padding: 8px 14px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; font-variant-numeric: tabular-nums; margin: 0 0 14px; }
+  dt { color: var(--muted); }
+  pre { border: 1px solid var(--line); border-radius: 6px; padding: 10px; font-size: 12px; white-space: pre-wrap; max-height: 320px; overflow: auto; }
+</style>
+</head>
+<body>
+<main>
+  <h1>OPFS spike harness</h1>
+  <p>Watch the "Safari Web Content" process in Activity Monitor (or Web Inspector → Timelines → Memory) during each step.</p>
+  <dl>
+    <dt>Browser</dt><dd id="ua"></dd>
+    <dt>Quota free</dt><dd id="quota">–</dd>
+    <dt>Persisted</dt><dd id="persisted">–</dd>
+    <dt>Progress</dt><dd id="prog">–</dd>
+  </dl>
+  <div class="grid">
+    <label>Size (MB) <input id="size" type="number" value="2048"></label>
+    <label>Files <input id="files" type="number" value="400"></label>
+  </div>
+  <div class="row">
+    <button id="estimate">Refresh estimate</button>
+    <button id="write" class="primary">Write to OPFS</button>
+    <button id="download">Download</button>
+    <button id="del">Delete OPFS</button>
+    <button id="blob">Blob control</button>
+  </div>
+  <pre id="log"></pre>
+</main>
+<script type="module">
+const $ = (id) => document.getElementById(id)
+const NAME = 'spike-export.zip'
+const log = (s) => { $('log').textContent = `[${new Date().toLocaleTimeString()}] ${s}\n` + $('log').textContent }
+const mb = (b) => (b / 1048576).toFixed(0) + ' MB'
+$('ua').textContent = navigator.userAgent
+
+async function estimate() {
+  try {
+    const { quota, usage } = await navigator.storage.estimate()
+    $('quota').textContent = `${mb(quota - usage)} (quota ${mb(quota)}, used ${mb(usage)})`
+    $('persisted').textContent = String(await navigator.storage.persisted?.())
+  } catch (e) { $('quota').textContent = `error: ${e.name} ${e.message}` }
+  try { await navigator.storage.getDirectory() } catch (e) { log(`getDirectory() failed: ${e.name}: ${e.message} (private browsing?)`) }
+}
+estimate()
+$('estimate').onclick = estimate
+
+function run(mode) {
+  const w = new Worker(new URL('./opfs-worker.js', import.meta.url), { type: 'module' })
+  const totalBytes = +$('size').value * 1048576, fileCount = +$('files').value
+  log(`${mode}: ${mb(totalBytes)} in ${fileCount} files…`)
+  w.onmessage = (e) => {
+    const m = e.data
+    if (m.type === 'progress') $('prog').textContent = `${mb(m.bytes)} · ${m.mbps.toFixed(0)} MB/s · file ${m.file}`
+    if (m.type === 'done') { log(`${mode} done: ${mb(m.bytes)} in ${m.secs.toFixed(1)} s = ${m.mbps.toFixed(0)} MB/s`); estimate() }
+    if (m.type === 'error') { log(`${mode} ERROR ${m.name}: ${m.message}`); w.terminate() }
+    if (m.type === 'blob') { const u = URL.createObjectURL(m.blob); save(u, 'blob-control.zip'); log('Blob control: download started') }
+  }
+  w.onerror = (e) => log(`worker error: ${e.message}`)
+  w.postMessage({ mode, totalBytes, fileCount, name: NAME })
+}
+function save(href, name) {
+  const a = Object.assign(document.createElement('a'), { href, download: name })
+  document.body.append(a); a.click(); a.remove()
+}
+$('write').onclick = () => { navigator.storage.persist?.().then((p) => log(`persist() → ${p}`)); run('opfs') }
+$('blob').onclick = () => run('blob')
+$('download').onclick = async () => {
+  try {
+    const f = await (await (await navigator.storage.getDirectory()).getFileHandle(NAME)).getFile()
+    save(URL.createObjectURL(f), 'export.zip')
+    log(`Download started from OPFS (${mb(f.size)}). Watch memory now.`)
+  } catch (e) { log(`Download failed: ${e.name}: ${e.message}`) }
+}
+$('del').onclick = async () => {
+  try { await (await navigator.storage.getDirectory()).removeEntry(NAME); log('OPFS file deleted'); estimate() }
+  catch (e) { log(`Delete failed: ${e.name}: ${e.message}`) }
+}
+</script>
+</body>
+</html>

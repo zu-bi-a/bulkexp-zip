@@ -1,0 +1,72 @@
+{
+  "name": "bulkexp-zip",
+  "version": "0.1.0",
+  "description": "Stream hundreds of remote files into one zip on the user's disk, in every major browser, with flat memory and resume.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./sw.js": "./dist/sw.js",
+    "./opfs-worker.js": "./dist/opfs-worker.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "zip",
+    "download",
+    "stream",
+    "bulk",
+    "export",
+    "opfs",
+    "file-system-access",
+    "service-worker",
+    "zip64",
+    "browser"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "demo": "npm run build && node scripts/serve.mjs",
+    "size": "node scripts/size.mjs",
+    "prepublishOnly": "node scripts/check-publish.mjs && npm run typecheck && npm test && npm run build && npm run size",
+    "site": "npm run build && node scripts/build-site.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.65.0",
+    "@types/node": "^26.6.6",
+    "fake-indexeddb": "^6.2.8",
+    "tsup": "^9.0.0",
+    "typescript": "^6.0.3",
+    "vitest": "^5.1.0"
+  },
+  "bin": {
+    "bulkexp-zip": "bin/bulkexp-zip.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zu-bi-a/bulkexp-zip.git"
+  },
+  "homepage": "https://github.com/zu-bi-a/bulkexp-zip#readme",
+  "bugs": {
+    "url": "https://github.com/zu-bi-a/bulkexp-zip/issues"
+  },
+  "author": "Zubia Nasir"
+}
