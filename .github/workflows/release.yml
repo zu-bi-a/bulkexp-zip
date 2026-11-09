@@ -8,12 +8,14 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write # npm provenance / trusted publishing
+      id-token: write # npm Trusted Publishing + provenance
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 24, registry-url: 'https://registry.npmjs.org' }
       - run: npm ci
-      - run: npm publish --provenance --access public
+      # Pre-releases (v0.2.0-beta.1) go to the "next" tag so `npm install bulkexp-zip` keeps getting the stable version.
+      - run: npm publish --provenance --access public --tag ${{ contains(github.ref_name, '-') && 'next' || 'latest' }}
         env:
+          # Not needed once Trusted Publishing is set up on npmjs.com; kept as a fallback.
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
